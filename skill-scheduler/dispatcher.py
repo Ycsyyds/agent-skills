@@ -193,8 +193,141 @@ def send_alert(recipient, text):
     return False
 
 
+def log_dispatcher(msg):
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    with open(LOG_DIR / "dispatcher.log", "a", encoding="utf-8") as f:
+        f.write(f"{datetime.now().isoformat(timespec='seconds')} {msg}\n")
+
+
+def execute_job(job, cfg, state, dry_run=False):
+    name = job["name"]
+    prompt = build_prompt(job)
+    if dry_run:
+        print(f"=== job: {name} ===")
+        print("cmd: kiro-cli chat --no-interactive --trust-all-tools <prompt>")
+        print(f"cwd: {SCRATCH_DIR}")
+        print("--- prompt ---")
+        print(prompt)
+        return "DRYRUN"
+    timeout_minutes = job.get("timeout_minutes", cfg.get("defaults", {}).get("timeout_minutes", 20))
+    ts = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    log_path = LOG_DIR / name / f"{ts}.log"
+    stdout, stderr, exit_code, timed_out = run_kiro(prompt, timeout_minutes, log_path)
+    result, reason = judge(stdout, exit_code, timed_out)
+    jobs_state = state.setdefault("jobs", {})
+    prev = jobs_state.get(name, {})
+    rec = {
+        "last_run_at": datetime.now().isoformat(timespec="seconds"),
+        "last_result": result,
+        "last_exit_code": exit_code,
+        "last_reason": reason,
+        "last_credits": parse_credits(stderr),
+        "last_log": str(log_path),
+    }
+    jobs_state[name] = rec
+    prune_logs(name)
+    if result != "OK":
+        prev_failed_today = (
+            prev.get("last_result") not in (None, "OK", "DRYRUN")
+            and (prev.get("last_run_at") or "")[:10] == rec["last_run_at"][:10]
+        )
+        if not prev_failed_today:
+            send_alert(resolve_recipient(cfg, state),
+                       f"❌ {name} {result} | {reason} | {log_path} | {rec['last_run_at']}")
+    return result
+
+
+def cmd_tick():
+    cfg = load_config()
+    state = load_json(STATE_FILE, {})
+    ok, open_id = preflight_auth()
+    if open_id and not state.get("report_to_cached"):
+        state["report_to_cached"] = open_id
+        save_json(STATE_FILE, state)
+    if not ok:
+        send_alert(resolve_recipient(cfg, state),
+                   f"❌ skill-scheduler 预检失败：lark-cli 认证无效，请重新登录 | "
+                   f"{datetime.now().isoformat(timespec='seconds')}")
+        log_dispatcher("preflight FAILED, tick skipped")
+        return
+    now = datetime.now()
+    ran = []
+    for job in cfg.get("jobs", []):
+        if not job.get("enabled", True):
+            continue
+        validate_job(job)
+        last = state.get("jobs", {}).get(job["name"], {}).get("last_run_at")
+        last_dt = datetime.fromisoformat(last) if last else None
+        if is_due(job["schedule"], last_dt, now):
+            res = execute_job(job, cfg, state, dry_run=False)
+            save_json(STATE_FILE, state)
+            ran.append(f"{job['name']}={res}")
+    log_dispatcher("tick ran: " + (", ".join(ran) if ran else "(none due)"))
+
+
+def cmd_run(name, dry_run):
+    cfg = load_config()
+    state = load_json(STATE_FILE, {})
+    job = next((j for j in cfg.get("jobs", []) if j["name"] == name), None)
+    if not job:
+        raise SystemExit(f"找不到 job: {name}")
+    validate_job(job)
+    if dry_run:
+        execute_job(job, cfg, state, dry_run=True)
+        return
+    ok, open_id = preflight_auth()
+    if open_id and not state.get("report_to_cached"):
+        state["report_to_cached"] = open_id
+    if not ok:
+        raise SystemExit("预检失败：lark-cli 认证无效，请重新登录")
+    res = execute_job(job, cfg, state, dry_run=False)
+    save_json(STATE_FILE, state)
+    print(f"{name} -> {res}")
+
+
+def cmd_status():
+    state = load_json(STATE_FILE, {})
+    jobs = state.get("jobs", {})
+    if not jobs:
+        print("尚无运行记录")
+        return
+    for name, rec in jobs.items():
+        print(f"{name}: {rec.get('last_result')} @ {rec.get('last_run_at')} "
+              f"(exit={rec.get('last_exit_code')}, credits={rec.get('last_credits')}) "
+              f"{rec.get('last_reason') or ''}")
+        print(f"    log: {rec.get('last_log')}")
+
+
+def with_lock(fn):
+    HOME.mkdir(parents=True, exist_ok=True)
+    f = open(LOCK_FILE, "w")
+    try:
+        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        print("已有一个 dispatcher 在运行，退出")
+        return
+    try:
+        fn()
+    finally:
+        fcntl.flock(f, fcntl.LOCK_UN)
+        f.close()
+
+
 def main():
-    raise SystemExit("not implemented yet")
+    ap = argparse.ArgumentParser(prog="dispatcher.py")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("tick")
+    pr = sub.add_parser("run")
+    pr.add_argument("name")
+    pr.add_argument("--dry-run", action="store_true")
+    sub.add_parser("status")
+    args = ap.parse_args()
+    if args.cmd == "tick":
+        with_lock(cmd_tick)
+    elif args.cmd == "run":
+        cmd_run(args.name, args.dry_run)
+    elif args.cmd == "status":
+        cmd_status()
 
 
 if __name__ == "__main__":
