@@ -59,3 +59,25 @@ test('migrate copies data/reports/memory from old repo', () => {
   assert.ok(n.copied >= 1);
   assert.ok(fs.existsSync(path.join(ctx.dp.dataDir, 'karpathy.json')));
 });
+
+test('addTweets dedups by id and returns pending ids excluding prefilter_skip', () => {
+  const { ctx } = tmpCtx(); lib.init(ctx);
+  const tweets = [
+    { id: '100', text: 'a real insightful tweet about LLMs scaling', url: 'https://x.com/k/status/100', time: new Date().toISOString() },
+    { id: '101', text: 'gm', url: 'https://x.com/k/status/101', time: new Date().toISOString(), prefilter_skip: true },
+    { id: '100', text: 'dup', url: 'https://x.com/k/status/100', time: new Date().toISOString() },
+  ];
+  const r = lib.addTweets(ctx, 'karpathy', tweets);
+  assert.deepStrictEqual(r.pending, ['100']);
+  const stored = lib.readJSON(path.join(ctx.dp.dataDir, 'karpathy.json'), null);
+  assert.strictEqual(stored.tweets.length, 2);
+});
+
+test('saveInsights attaches insight and advances handle cursor to max id', () => {
+  const { ctx } = tmpCtx(); lib.init(ctx);
+  lib.addTweets(ctx, 'karpathy', [{ id: '100', text: 'xxxxxxxxxxxxxxxxxxx', url: 'https://x.com/k/status/100', time: new Date().toISOString() }]);
+  lib.saveInsights(ctx, 'karpathy', [{ id: '100', insight: { one_liner: 'oo', novelty: 7, skip: false } }]);
+  const stored = lib.readJSON(path.join(ctx.dp.dataDir, 'karpathy.json'), null);
+  assert.strictEqual(stored.tweets[0].llm_insight.novelty, 7);
+  assert.strictEqual(lib.cursors(ctx).handles.karpathy.last_id, '100');
+});

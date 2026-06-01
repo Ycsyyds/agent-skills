@@ -77,5 +77,61 @@ function migrate(ctx, oldRepo) {
   return { copied };
 }
 
+function tweetId(t) {
+  if (t.id) return String(t.id);
+  const m = String(t.url || '').match(/status\/(\d+)/);
+  return m ? m[1] : null;
+}
+
+function dataFile(ctx, handle) { return path.join(ctx.dp.dataDir, `${handle}.json`); }
+
+function pruneTweets(ctx, tweets) {
+  const days = (ctx.config.storage && ctx.config.storage.tweet_history_days) || 7;
+  const cut7 = Date.now() - days * 86400000;
+  const cut14 = Date.now() - 14 * 86400000;
+  return tweets.filter(t => {
+    if (!t.time) return true;
+    const ts = new Date(t.time).getTime();
+    return t.llm_insight ? ts > cut14 : ts > cut7;
+  });
+}
+
+function addTweets(ctx, handle, incoming) {
+  const file = dataFile(ctx, handle);
+  const store = readJSON(file, { tweets: [], lastChecked: null });
+  const byId = new Map(store.tweets.map(t => [tweetId(t), t]));
+  const pending = [];
+  for (const t of incoming) {
+    const id = tweetId(t); if (!id) continue;
+    if (!byId.has(id)) { t.id = id; byId.set(id, t); }
+    const cur = byId.get(id);
+    if (!cur.llm_insight && !cur.prefilter_skip && !pending.includes(id)) pending.push(id);
+  }
+  store.tweets = pruneTweets(ctx, [...byId.values()].sort((a, b) => (tweetId(b) > tweetId(a) ? 1 : -1)));
+  store.lastChecked = new Date().toISOString();
+  writeJSON(file, store);
+  return { pending };
+}
+
+function saveInsights(ctx, handle, items) {
+  const file = dataFile(ctx, handle);
+  const store = readJSON(file, { tweets: [] });
+  const byId = new Map(store.tweets.map(t => [tweetId(t), t]));
+  let maxId = null;
+  for (const it of items) {
+    const t = byId.get(String(it.id)); if (!t) continue;
+    t.llm_insight = it.insight;
+    if (maxId === null || String(it.id) > maxId) maxId = String(it.id);
+  }
+  writeJSON(file, store);
+  const s = loadState(ctx);
+  const prev = s.handles[handle] || {};
+  s.handles[handle] = { last_id: maxId && (!prev.last_id || maxId > prev.last_id) ? maxId : (prev.last_id || maxId),
+    last_processed_time: new Date().toISOString() };
+  saveState(ctx, s);
+  return { advanced: s.handles[handle].last_id };
+}
+
 module.exports = { makeCtx, init, cursors, migrate, loadState, saveState, readJSON, writeJSON,
+  tweetId, dataFile, addTweets, saveInsights,
   _internal: { defaultConfig, DEFAULT_TARGETS } };
