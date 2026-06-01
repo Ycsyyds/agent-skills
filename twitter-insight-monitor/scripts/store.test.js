@@ -149,3 +149,11 @@ test('fetch helper: filterSince keeps only newer ids', () => {
   assert.deepStrictEqual(fetchmod.filterSince(tw, '100').map(t => t.id), ['101']);
   assert.deepStrictEqual(fetchmod.filterSince(tw, null).map(t => t.id), ['100','101','99']);
 });
+
+const notify = require('./notify');
+
+test('notify.send returns false when notify disabled (no send attempted)', async () => {
+  const ctx = { config: { notify: false, feishu: { enabled: false } } };
+  const ok = await notify.send('hello', 'title', ctx);
+  assert.strictEqual(ok, false);
+});
