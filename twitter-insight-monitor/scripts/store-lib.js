@@ -164,7 +164,47 @@ function saveDaily(ctx, date, markdown) {
   return { written: `${date}.md` };
 }
 
+function isoWeek(d) {
+  const dt = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const day = dt.getUTCDay() || 7;
+  dt.setUTCDate(dt.getUTCDate() + 4 - day);
+  const ys = new Date(Date.UTC(dt.getUTCFullYear(), 0, 1));
+  const wk = Math.ceil((((dt - ys) / 86400000) + 1) / 7);
+  return `${dt.getUTCFullYear()}-W${String(wk).padStart(2, '0')}`;
+}
+
+function pendingWeekly(ctx) {
+  const week = isoWeek(new Date());
+  const s = loadState(ctx);
+  const cut = Date.now() - 7 * 86400000;
+  const dailyReports = [];
+  if (fs.existsSync(ctx.dp.dailyDir)) {
+    for (const f of fs.readdirSync(ctx.dp.dailyDir).filter(f => f.endsWith('.md')).sort()) {
+      const date = f.replace(/\.md$/, '');
+      if (new Date(date).getTime() >= cut) dailyReports.push({ date, content: fs.readFileSync(path.join(ctx.dp.dailyDir, f), 'utf8') });
+    }
+  }
+  const prevLongTerm = fs.existsSync(ctx.dp.coreInsights) ? fs.readFileSync(ctx.dp.coreInsights, 'utf8') : '';
+  const ready = dailyReports.length > 0 && s.last_weekly_date !== week;
+  return { ready, week, dailyReports, prevLongTerm };
+}
+
+function saveWeekly(ctx, week, markdown) {
+  fs.mkdirSync(ctx.dp.weeklyDir, { recursive: true });
+  fs.writeFileSync(path.join(ctx.dp.weeklyDir, `${week}.md`), markdown);
+  if (fs.existsSync(ctx.dp.coreInsights)) {
+    fs.mkdirSync(ctx.dp.archiveDir, { recursive: true });
+    const stamp = new Date().toLocaleDateString('en-CA');
+    fs.copyFileSync(ctx.dp.coreInsights, path.join(ctx.dp.archiveDir, `core-insights-${stamp}.md`));
+  }
+  fs.mkdirSync(ctx.dp.longTermDir, { recursive: true });
+  fs.writeFileSync(ctx.dp.coreInsights, markdown);
+  const s = loadState(ctx); s.last_weekly_date = week; saveState(ctx, s);
+  return { snapshot: `${week}.md` };
+}
+
 module.exports = { makeCtx, init, cursors, migrate, loadState, saveState, readJSON, writeJSON,
   tweetId, dataFile, addTweets, saveInsights,
   pendingDaily, saveDaily,
+  isoWeek, pendingWeekly, saveWeekly,
   _internal: { defaultConfig, DEFAULT_TARGETS } };

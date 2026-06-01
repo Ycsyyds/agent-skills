@@ -102,3 +102,23 @@ test('saveDaily writes report file and advances last_daily_date only for past da
   lib.saveDaily(ctx, today, '# today');
   assert.strictEqual(lib.cursors(ctx).last_daily_date, '2026-05-30');
 });
+
+test('pendingWeekly is ready when daily reports exist and week not yet distilled', () => {
+  const { ctx } = tmpCtx(); lib.init(ctx);
+  const today = new Date().toLocaleDateString('en-CA');
+  lib.saveDaily(ctx, today, '# today report');
+  const r = lib.pendingWeekly(ctx);
+  assert.strictEqual(r.ready, true);
+  assert.match(r.week, /^\d{4}-W\d{2}$/);
+  assert.ok(r.dailyReports.length >= 1);
+});
+
+test('saveWeekly writes snapshot, archives old core, rewrites core, sets cursor', () => {
+  const { ctx } = tmpCtx(); lib.init(ctx);
+  fs.writeFileSync(ctx.dp.coreInsights, '# OLD CORE');
+  lib.saveWeekly(ctx, '2026-W22', '# NEW CORE');
+  assert.ok(fs.existsSync(path.join(ctx.dp.weeklyDir, '2026-W22.md')));
+  assert.strictEqual(fs.readFileSync(ctx.dp.coreInsights, 'utf8'), '# NEW CORE');
+  assert.ok(fs.readdirSync(ctx.dp.archiveDir).some(f => f.startsWith('core-insights-')));
+  assert.strictEqual(lib.cursors(ctx).last_weekly_date, '2026-W22');
+});
