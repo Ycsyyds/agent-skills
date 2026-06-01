@@ -1,0 +1,11 @@
+# 非本仓库维护的第三方/克隆 skill 与杂项
+codebase-analysis-skill/
+content-creator-skill/
+hermes-agent-research.md
+output/
+
+# 运行时 / 本地产物
+**/.work/
+*.zip
+*.tar.gz
+.DS_Store
