@@ -119,5 +119,25 @@ class TestValidateJob(unittest.TestCase):
             validate_job({"name": "a", "schedule": {"daily_at": "02:30"}})
 
 
+from dispatcher import judge
+
+
+class TestJudge(unittest.TestCase):
+    def test_ok(self):
+        self.assertEqual(judge("KIRO_JOB_RESULT: OK", 0, False), ("OK", ""))
+
+    def test_fail_sentinel(self):
+        self.assertEqual(judge("KIRO_JOB_RESULT: FAIL 没权限", 0, False), ("FAIL", "没权限"))
+
+    def test_timeout(self):
+        self.assertEqual(judge("partial", 0, True)[0], "TIMEOUT")
+
+    def test_nonzero_no_sentinel(self):
+        self.assertEqual(judge("garbage", 1, False)[0], "FAIL")
+
+    def test_zero_no_sentinel_is_fail(self):
+        self.assertEqual(judge("no sentinel but exit 0", 0, False)[0], "FAIL")
+
+
 if __name__ == "__main__":
     unittest.main()

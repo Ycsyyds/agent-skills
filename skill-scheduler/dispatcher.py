@@ -110,6 +110,52 @@ def validate_job(job):
         raise ValueError(f"job {job.get('name')}: 需要 prompt 或 prompt_file")
 
 
+def judge(stdout, exit_code, timed_out):
+    if timed_out:
+        return "TIMEOUT", "运行超时"
+    result, reason = parse_sentinel(stdout)
+    if result == "OK":
+        return "OK", ""
+    if result == "FAIL":
+        return "FAIL", reason or "skill 报告失败"
+    if exit_code != 0:
+        return "FAIL", f"退出码 {exit_code}，无哨兵"
+    return "FAIL", "无 KIRO_JOB_RESULT 哨兵"
+
+
+def run_kiro(prompt, timeout_minutes, log_path):
+    """跑无头 kiro-cli，全量落 log_path；返回 (stdout, stderr, exit_code, timed_out)。"""
+    SCRATCH_DIR.mkdir(parents=True, exist_ok=True)
+    env = dict(os.environ, KIRO_LOG_NO_COLOR="1")
+    timed_out = False
+    try:
+        proc = subprocess.run(
+            ["kiro-cli", "chat", "--no-interactive", "--trust-all-tools", prompt],
+            cwd=str(SCRATCH_DIR), env=env, capture_output=True, text=True,
+            timeout=timeout_minutes * 60,
+        )
+        stdout, stderr, exit_code = proc.stdout, proc.stderr, proc.returncode
+    except subprocess.TimeoutExpired as e:
+        stdout = e.stdout or ""
+        stderr = e.stderr or ""
+        exit_code, timed_out = -1, True
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log_path.write_text(
+        "$ kiro-cli chat --no-interactive --trust-all-tools <prompt>\n\n"
+        f"=== STDOUT ===\n{stdout}\n\n=== STDERR ===\n{stderr}\n",
+        encoding="utf-8",
+    )
+    return stdout, stderr, exit_code, timed_out
+
+
+def prune_logs(job_name):
+    d = LOG_DIR / job_name
+    if not d.exists():
+        return
+    for old in sorted(d.glob("*.log"))[:-KEEP_LOGS]:
+        old.unlink()
+
+
 def main():
     raise SystemExit("not implemented yet")
 
