@@ -6,10 +6,19 @@
 
 ## 当前 skills
 
+### 本仓库维护
+
 | Skill | 说明 |
 |-------|------|
 | [lark-workflow-bug-feedback](lark-workflow-bug-feedback/) | 从指定飞书群收集 bug/产品反馈，去重维护到多维表格 + 累积日报，私信汇总 |
 | [lark-workflow-group-digest](lark-workflow-group-digest/) | 从指定飞书群提取 5 类重点（决策/待办/通知/关键信息/资源），按天追加到累积「群重点纪要」文档，私信摘要 |
+
+### 独立仓库（单独维护，按各自 URL 安装）
+
+| Skill | 仓库 | 说明 |
+|-------|------|------|
+| codebase-analysis | [codebase-analysis-skill](https://github.com/Ycsyyds/codebase-analysis-skill) | 代码库分析：生成技术文档、梳理数据流、分析算法与数据结构、理解架构 |
+| content-creator | [content-creator-skill](https://github.com/Ycsyyds/content-creator-skill) | 自动化内容创作：从主题产出调研报告、视频脚本、Remotion 短视频、小红书笔记、公众号文章 |
 
 ## 安装到 AI 工具
 
