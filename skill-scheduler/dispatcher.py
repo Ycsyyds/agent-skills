@@ -43,6 +43,11 @@ def parse_sentinel(stdout):
     return result, reason
 
 
+def parse_credits(stderr):
+    matches = CREDITS_RE.findall(strip_ansi(stderr))
+    return float(matches[-1]) if matches else None
+
+
 def main():
     raise SystemExit("not implemented yet")
 

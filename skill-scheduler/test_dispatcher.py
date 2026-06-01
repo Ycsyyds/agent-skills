@@ -25,5 +25,17 @@ class TestSentinel(unittest.TestCase):
         self.assertEqual(parse_sentinel("just output, no sentinel"), (None, ""))
 
 
+from dispatcher import parse_credits
+
+
+class TestCredits(unittest.TestCase):
+    def test_extract_last(self):
+        err = "noise\n ▸ Credits: 0.23 • Time: 6s\nmore\n ▸ Credits: 2.86 • Time: 1m\n"
+        self.assertEqual(parse_credits(err), 2.86)
+
+    def test_none_when_absent(self):
+        self.assertIsNone(parse_credits("no credits here"))
+
+
 if __name__ == "__main__":
     unittest.main()
