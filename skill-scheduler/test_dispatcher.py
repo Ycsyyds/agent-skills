@@ -95,5 +95,29 @@ class TestIsDue(unittest.TestCase):
         self.assertFalse(is_due(sched, None, datetime(2026, 6, 6, 3, 0)))
 
 
+from dispatcher import validate_job
+
+
+class TestValidateJob(unittest.TestCase):
+    def test_ok(self):
+        validate_job({"name": "a", "schedule": {"daily_at": "02:30"}, "prompt": "x"})
+
+    def test_missing_name(self):
+        with self.assertRaises(ValueError):
+            validate_job({"schedule": {"daily_at": "02:30"}, "prompt": "x"})
+
+    def test_both_schedule_types(self):
+        with self.assertRaises(ValueError):
+            validate_job({"name": "a", "schedule": {"daily_at": "1:1", "interval_minutes": 5}, "prompt": "x"})
+
+    def test_no_schedule_type(self):
+        with self.assertRaises(ValueError):
+            validate_job({"name": "a", "schedule": {}, "prompt": "x"})
+
+    def test_missing_prompt(self):
+        with self.assertRaises(ValueError):
+            validate_job({"name": "a", "schedule": {"daily_at": "02:30"}})
+
+
 if __name__ == "__main__":
     unittest.main()

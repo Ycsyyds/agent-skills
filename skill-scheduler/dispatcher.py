@@ -79,6 +79,37 @@ def is_due(schedule, last_run, now):
     raise ValueError("schedule 必须含 'daily_at' 或 'interval_minutes'")
 
 
+def load_json(path, default):
+    if path.exists():
+        return json.loads(path.read_text(encoding="utf-8"))
+    return default
+
+
+def save_json(path, data):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(path)
+
+
+def load_config():
+    cfg = load_json(JOBS_FILE, None)
+    if cfg is None:
+        raise SystemExit(f"找不到配置：{JOBS_FILE}（从 jobs.example.json 拷贝一份）")
+    return cfg
+
+
+def validate_job(job):
+    if not job.get("name"):
+        raise ValueError("job 缺少 name")
+    sched = job.get("schedule", {})
+    picked = {"daily_at", "interval_minutes"} & set(sched)
+    if len(picked) != 1:
+        raise ValueError(f"job {job.get('name')}: schedule 必须且只能含 daily_at / interval_minutes 之一")
+    if not (job.get("prompt") or job.get("prompt_file")):
+        raise ValueError(f"job {job.get('name')}: 需要 prompt 或 prompt_file")
+
+
 def main():
     raise SystemExit("not implemented yet")
 
