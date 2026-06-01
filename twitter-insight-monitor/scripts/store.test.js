@@ -134,3 +134,18 @@ test('store.js CLI: init then cursors via subprocess', () => {
   const c = JSON.parse(out);
   assert.deepStrictEqual(c.handles, {});
 });
+
+const fetchmod = require('./fetch');
+
+test('fetch helpers: idFromUrl + prefilter', () => {
+  assert.strictEqual(fetchmod.idFromUrl('https://x.com/k/status/12345'), '12345');
+  assert.strictEqual(fetchmod.prefilterSkip('https://t.co/abc'), true);   // empty after strip
+  assert.strictEqual(fetchmod.prefilterSkip('gm'), true);                 // <15 chars
+  assert.strictEqual(fetchmod.prefilterSkip('a genuinely long enough tweet body'), false);
+});
+
+test('fetch helper: filterSince keeps only newer ids', () => {
+  const tw = [{ id: '100' }, { id: '101' }, { id: '99' }];
+  assert.deepStrictEqual(fetchmod.filterSince(tw, '100').map(t => t.id), ['101']);
+  assert.deepStrictEqual(fetchmod.filterSince(tw, null).map(t => t.id), ['100','101','99']);
+});
