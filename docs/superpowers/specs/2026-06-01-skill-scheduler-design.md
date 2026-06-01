@@ -236,4 +236,6 @@ schedule 两种形态（够用即止，不引 cron 表达式库）：
 - 🎁 stderr 末尾打印 `Credits: <n> • Time: <s>` → 可解析为每次运行的 credit 消耗（已写入 §7/§8）。
 - ✅ scratch 工作目录可行（已写入 §7）。
 
-**尚未验证（实现第 1 步的 spike 覆盖）**：无头 kiro-cli 能否**加载并完整执行多步 lark skill 工作流**（含真实写飞书文档/Base + 发私信）。该测试有真实写副作用，需先确认目标群（已 bootstrap）并获用户授权后进行。
+**探针 3 · 端到端真跑（已通过）**：对已 bootstrap 的群「LS软件开发与规划」跑 group-digest 增量（`kiro-cli chat --no-interactive --trust-all-tools`，prompt=任务+footer，scratch 工作目录）。结果：退出码 0、耗时约 1 分钟、`Credits: 2.86`；哨兵（剥 ANSI 后取最后匹配行）=`KIRO_JOB_RESULT: OK`；真实副作用全部正确——bot 私信送达、纪要文档追加当天小节、state.json 游标从 `2026-05-29 18:40:00` 推进到运行时刻。**结论：无头 kiro-cli 能加载并完整执行多步 lark skill 工作流**，整套机制（触发→执行→写副作用→哨兵→credit）端到端打通。
+
+实测推论：单次工作流约 1 分钟，默认 `timeout_minutes: 20` 绰绰有余；bug-feedback（写 Base）路径未单独实跑，但其工具调用机制（经 `lark-cli` 写）与 group-digest 同构，风险已基本消除。实现第 1 步 spike（§13）只需在 dispatcher 实际上下文中复跑一次确认即可。
