@@ -59,6 +59,26 @@ def build_prompt(job):
     return base + FOOTER
 
 
+def is_due(schedule, last_run, now):
+    """schedule: dict; last_run: datetime|None; now: datetime -> bool。"""
+    if "interval_minutes" in schedule:
+        if last_run is None:
+            return True
+        return (now - last_run) >= timedelta(minutes=schedule["interval_minutes"])
+    if "daily_at" in schedule:
+        weekdays = schedule.get("weekdays")
+        if weekdays and now.isoweekday() not in weekdays:
+            return False
+        hh, mm = (int(x) for x in schedule["daily_at"].split(":"))
+        scheduled = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
+        if now < scheduled:
+            return False
+        if last_run is not None and last_run.date() >= now.date():
+            return False
+        return True
+    raise ValueError("schedule 必须含 'daily_at' 或 'interval_minutes'")
+
+
 def main():
     raise SystemExit("not implemented yet")
 

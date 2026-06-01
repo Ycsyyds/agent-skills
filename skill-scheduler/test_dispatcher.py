@@ -57,5 +57,43 @@ class TestBuildPrompt(unittest.TestCase):
             self.assertTrue(out.endswith(FOOTER))
 
 
+from datetime import datetime
+from dispatcher import is_due
+
+
+class TestIsDue(unittest.TestCase):
+    def test_interval_first_run(self):
+        self.assertTrue(is_due({"interval_minutes": 120}, None, datetime(2026, 6, 1, 9, 0)))
+
+    def test_interval_not_elapsed(self):
+        last = datetime(2026, 6, 1, 8, 30)
+        self.assertFalse(is_due({"interval_minutes": 120}, last, datetime(2026, 6, 1, 9, 0)))
+
+    def test_interval_elapsed(self):
+        last = datetime(2026, 6, 1, 6, 0)
+        self.assertTrue(is_due({"interval_minutes": 120}, last, datetime(2026, 6, 1, 9, 0)))
+
+    def test_daily_before_time(self):
+        self.assertFalse(is_due({"daily_at": "02:30"}, None, datetime(2026, 6, 1, 1, 0)))
+
+    def test_daily_after_time_not_run_today(self):
+        last = datetime(2026, 5, 31, 2, 30)
+        self.assertTrue(is_due({"daily_at": "02:30"}, last, datetime(2026, 6, 1, 3, 0)))
+
+    def test_daily_already_ran_today(self):
+        last = datetime(2026, 6, 1, 2, 30)
+        self.assertFalse(is_due({"daily_at": "02:30"}, last, datetime(2026, 6, 1, 9, 0)))
+
+    def test_daily_catchup_after_downtime(self):
+        # 机器昨天关机错过 02:30，今天 09:00 开机 -> 应补跑
+        last = datetime(2026, 5, 30, 2, 30)
+        self.assertTrue(is_due({"daily_at": "02:30"}, last, datetime(2026, 6, 1, 9, 0)))
+
+    def test_daily_weekday_excluded(self):
+        # 2026-06-06 是周六(isoweekday=6)，限定工作日 -> 不跑
+        sched = {"daily_at": "02:30", "weekdays": [1, 2, 3, 4, 5]}
+        self.assertFalse(is_due(sched, None, datetime(2026, 6, 6, 3, 0)))
+
+
 if __name__ == "__main__":
     unittest.main()
