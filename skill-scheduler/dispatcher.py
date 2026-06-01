@@ -299,6 +299,7 @@ def cmd_tick():
             if should_alert(prev, rec):
                 send_alert(resolve_recipient(cfg, state),
                            f"❌ {job_name} 调度异常 | {e} | {now_iso}")
+            ran.append(f"{job_name}=EXCEPTION")
             continue
     log_dispatcher("tick ran: " + (", ".join(ran) if ran else "(none due)"))
 
