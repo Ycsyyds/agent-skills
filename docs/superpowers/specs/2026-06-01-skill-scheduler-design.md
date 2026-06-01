@@ -108,11 +108,12 @@ skills/
 字段：
 
 - `defaults.timeout_minutes`：单 job 默认超时（分钟），可被 job 级 `timeout_minutes` 覆盖。
-- `defaults.report_to`：失败告警接收人 open_id；留空则运行时取 `lark-cli auth status` 的 userOpenId（你自己）。
+- `defaults.report_to`：失败告警接收人 open_id。**建议显式填写**；留空则首次成功解析到的 userOpenId 会缓存进 state.json，供后续告警使用，**不依赖告警时刻的实时 `auth status`**（见 §8 韧性）。
 - `name`：唯一，用作日志目录名与 state 键。
 - `enabled`：开关，停用不删。
 - `schedule`：见下。
 - `prompt`：只写任务本身，不写"别问我/输出哨兵"那套样板（由 dispatcher 自动拼接）。
+- `prompt_file`：可选，指向一个 `.md`（相对 `skill-scheduler/` 或绝对路径），作为长 prompt 的可读替代；与 `prompt` 二选一。中文长 prompt 塞进 JSON 要转义、不能多行，量大时用 `prompt_file` 更好维护。
 
 schedule 两种形态（够用即止，不引 cron 表达式库）：
 
@@ -153,12 +154,18 @@ schedule 两种形态（够用即止，不引 cron 表达式库）：
 
 并发：串行执行，不并发，避免多个 `kiro-cli`/`lark-cli` 抢 token、撞飞书限流。
 
+每次运行的工作目录：dispatcher 在一个固定 scratch 目录（如 `~/.config/skill-scheduler/scratch/`）下启动 `kiro-cli` 子进程，避免 skill 的相对路径临时文件（如 lark-doc 的 `@./section.md`）和按目录存储的会话污染仓库或互相冲突。
+
 "到点"判定（补跑 + 去重，纯 `datetime`，不依赖心跳精度）：
 
 - `daily_at "HH:MM"`：当「今天是允许的 weekday」且「now ≥ 今天 HH:MM」且「上次运行日期 < 今天」→ 跑。三条合起来既能准点跑，又能在机器关机错过后开机自动补跑，且一天绝不重复。
 - `interval_minutes N`：当「now − 上次运行 ≥ N 分钟」→ 跑（无上次运行记录则首次立即跑）。
 
-结果判定优先级：先看末尾哨兵 `KIRO_JOB_RESULT`；若无哨兵 / 超时 / 非零退出码 → 一律判 FAIL（宁可误报，不漏报）。超时单独记为 `TIMEOUT`（属 FAIL 的一种，告警注明）。
+结果判定（**已实测**：模型最终文本与哨兵均落 stdout，但 stdout 含 ANSI 颜色码，即便 `KIRO_LOG_NO_COLOR=1` 也只影响日志文件不影响 stdout）：
+
+- 解析时**先剥 ANSI 转义码**，再用正则取**最后一个**匹配 `^KIRO_JOB_RESULT:\s*(OK|FAIL)\b` 的行（不是死抠 stdout 末行——agent 可能在哨兵后又补话）。
+- 优先级：命中 `OK` → 成功；命中 `FAIL` → 失败（带原因）；无哨兵 / 超时 / 非零退出码 → 一律判 FAIL（宁可误报，不漏报）。超时单独记为 `TIMEOUT`。
+- 顺带从 stderr 解析 `Credits: <n>`（实测每次运行结束会打印），记入 state/日志，作为"token/credit 消耗"的量化指标（服务北极星目标）。
 
 ## 8. 日志 / 状态 / 告警
 
@@ -167,12 +174,12 @@ schedule 两种形态（够用即止，不引 cron 表达式库）：
 - 每次运行一份 `logs/<job名>/<时间戳>.log`，存该次 `kiro-cli` 的全量 stdout+stderr。每个 job 只保留最近 N 份（默认 20），自动清旧。
 - dispatcher 自身 `logs/dispatcher.log`，每次 tick 一行（哪些到点、各自结果）。
 
-**state.json**（复盘的数据源）：每个 job 记 `last_run_at` / `last_result`（`OK` | `FAIL` | `TIMEOUT`）/ `last_exit_code` / `last_reason`（FAIL 时的哨兵原因）/ `last_log`（日志路径）。`dispatcher.py status` 读它做汇总。
+**state.json**（复盘的数据源）：顶层存 `report_to_cached`（首次解析到的 userOpenId）；每个 job 记 `last_run_at` / `last_result`（`OK` | `FAIL` | `TIMEOUT`）/ `last_exit_code` / `last_reason`（FAIL 时的哨兵原因）/ `last_credits`（本次消耗，来自 stderr）/ `last_log`（日志路径）。`dispatcher.py status` 读它做汇总。
 
 **告警**：
 
 - 失败时 `lark-cli im +messages-send --as bot --user-id <open_id>`，正文：`❌ <job名> 失败 | 原因 | 日志路径 | 时间`。
-- 接收人：`defaults.report_to`，留空则取 `lark-cli auth status` 的 userOpenId。
+- 接收人优先级：`defaults.report_to` → state.json 的 `report_to_cached` → 末路才尝试实时 `auth status`。**这点很关键**：最重要的"认证过期"告警恰恰发生在 `auth status` 不可靠时，靠缓存的 open_id 才能让 bot 告警照常送达（bot 用应用级凭证，与 user oauth 解耦）。
 - 韧性兜底：bot 用应用级凭证，通常比 user oauth 耐久，user 过期时 bot 告警一般仍能发出。万一连 bot 告警都失败 → 写入醒目的 `ALERT.log` + dispatcher.log 记 ERROR，保证本地有痕迹，杜绝"告警自己也静默失败"。
 - 降噪：同一 job 持续失败时不每个 tick 都轰炸——当天同一 FAIL 状态只告警一次（状态从 OK→FAIL 跳变才再次告警）。
 - 成功不打扰：成功摘要由 skill 自身私信发出，dispatcher 成功时不重复推。
@@ -180,7 +187,8 @@ schedule 两种形态（够用即止，不引 cron 表达式库）：
 ## 9. 前置条件与边界
 
 - **目标群必须已 bootstrap**：定时 job 只做增量。首次为某群建文档/Base/锚点（含写操作确认）由人工交互式跑一次对应 skill 完成，不放进无人值守。jobs.json 里登记的群默认都视为已 bootstrap。
-- **认证有效**：`lark-cli` 的 user 与 bot 身份需已 `auth login`；预检门只拦 user 失效并告警，bot 失效会表现为告警发送失败 → 走 ALERT.log 兜底。
+- **认证有效**：`lark-cli` 的 user 与 bot 身份需已 `auth login`；预检门只拦 user 失效并告警。**实测 token 周期**：access token 仅约 2 小时但带 `offline_access` 自动刷新，refresh token 约 7 天且为滑动窗口——只要每周至少跑到一次就持续续期；连续 >7 天无运行才需重新登录。每日任务天然让认证保持温热，预检门只为兜住那个 >7 天的边界。
+- **kiro-cli 自身登录态**不在预检门覆盖范围（门只查 lark）；它若失效会表现为每个 job FAIL 告警，可接受。
 - **skill 已安装**：两个目标 skill 已在 `~/.kiro/skills/`（真实目录），`kiro-cli` 无头可按描述触发。
 
 ## 10. 验收与"测试 → 检查 → 迭代"闭环
@@ -208,7 +216,24 @@ schedule 两种形态（够用即止，不引 cron 表达式库）：
 
 ## 12. 技术栈与依赖
 
-- 语言：Python 3.8（标准库：`json` / `subprocess` / `datetime` / `argparse` / `fcntl`(flock) / `pathlib` / `unittest`），无第三方依赖。
+- 语言：Python 3.8（标准库：`json` / `subprocess` / `datetime` / `argparse` / `fcntl`(flock) / `pathlib` / `re`(剥 ANSI + 哨兵正则) / `unittest`），无第三方依赖。
 - 外部命令：`kiro-cli`（无头运行 skill）、`lark-cli`（认证预检 + bot 告警）。
 - 调度：用户 crontab 一条心跳行。
 - 配置/状态/日志根目录：`~/.config/skill-scheduler/`。
+
+## 13. 实现顺序提示（地基先行）
+
+实现计划的**第 1 步必须是 feasibility spike**：手敲一条 `kiro-cli chat --no-interactive --trust-all-tools "使用 <skill> ..."` 对一个**已 bootstrap 的目标群**真跑一次，确认无头模式能加载并跑完整个多步 skill、产物正确、哨兵正确。**先打通这条端到端链路，再写 dispatcher**——否则可能把调度器写得很完整，地基却是空的。dispatcher 控制在数百行内，避免告警降噪/重试/保留策略滚成小框架（与"代码最少"冲突）。
+
+## 14. 验证记录（2026-06-01 实测）
+
+**探针 1 · `lark-cli auth status`（只读）**：user（杨仔，`ou_9bcce4dcb0a97f55cb93577559be7136`）与 bot 身份均 `ready`、`tokenStatus: valid`。access token `expiresAt` ~2 小时，`refreshExpiresAt` ~7 天滑动窗口，含 `offline_access`。→ 坐实预检门必要性；日常运行可保持认证温热（见 §9）。
+
+**探针 2 · 无头 `kiro-cli`（核心地基，已通过）**：`kiro-cli chat --no-interactive --trust-tools= "...最后一行只输出 KIRO_JOB_RESULT: OK"`，退出码 0、耗时 11s。结论：
+
+- ✅ 模型最终文本与哨兵**均落 stdout**（哨兵可被抓到）——stdout 解析方案成立。
+- ⚠️ stdout **含 ANSI 颜色码**（`KIRO_LOG_NO_COLOR=1` 只管日志文件，不管 stdout）→ 解析器须先剥 ANSI（已写入 §7）。
+- 🎁 stderr 末尾打印 `Credits: <n> • Time: <s>` → 可解析为每次运行的 credit 消耗（已写入 §7/§8）。
+- ✅ scratch 工作目录可行（已写入 §7）。
+
+**尚未验证（实现第 1 步的 spike 覆盖）**：无头 kiro-cli 能否**加载并完整执行多步 lark skill 工作流**（含真实写飞书文档/Base + 发私信）。该测试有真实写副作用，需先确认目标群（已 bootstrap）并获用户授权后进行。
