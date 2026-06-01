@@ -12,6 +12,13 @@
 |-------|------|
 | [lark-workflow-bug-feedback](lark-workflow-bug-feedback/) | 从指定飞书群收集 bug/产品反馈，去重维护到多维表格 + 累积日报，私信汇总 |
 | [lark-workflow-group-digest](lark-workflow-group-digest/) | 从指定飞书群提取 5 类重点（决策/待办/通知/关键信息/资源），按天追加到累积「群重点纪要」文档，私信摘要 |
+| [twitter-insight-monitor](twitter-insight-monitor/) | 监控 AI 大佬的 Twitter/X 动态，逐条提炼结构化洞察、生成每日日报、每周蒸馏长期记忆，维护三层记忆（短期推文/中期日报/长期核心观点库） |
+
+### 调度 / 自动化工具
+
+| 工具 | 说明 |
+|------|------|
+| [skill-scheduler](skill-scheduler/) | 配置驱动的本机调度器：按计划用无头 `kiro-cli` 定时、无人值守地运行上面这些 skill 工作流（含夜间），失败飞书告警。加任务只改 `jobs.json`。详见其 [README](skill-scheduler/README.md) |
 
 ### 独立仓库（单独维护，按各自 URL 安装）
 
