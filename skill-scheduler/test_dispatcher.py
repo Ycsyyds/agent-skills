@@ -37,5 +37,25 @@ class TestCredits(unittest.TestCase):
         self.assertIsNone(parse_credits("no credits here"))
 
 
+import tempfile
+from pathlib import Path
+from dispatcher import build_prompt, FOOTER
+
+
+class TestBuildPrompt(unittest.TestCase):
+    def test_inline_prompt_appends_footer(self):
+        out = build_prompt({"prompt": "做任务X"})
+        self.assertTrue(out.startswith("做任务X"))
+        self.assertTrue(out.endswith(FOOTER))
+
+    def test_prompt_file_absolute(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "p.md"
+            p.write_text("文件里的任务", encoding="utf-8")
+            out = build_prompt({"prompt_file": str(p)})
+            self.assertTrue(out.startswith("文件里的任务"))
+            self.assertTrue(out.endswith(FOOTER))
+
+
 if __name__ == "__main__":
     unittest.main()

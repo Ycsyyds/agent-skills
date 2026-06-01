@@ -48,6 +48,17 @@ def parse_credits(stderr):
     return float(matches[-1]) if matches else None
 
 
+def build_prompt(job):
+    if job.get("prompt_file"):
+        p = Path(job["prompt_file"])
+        if not p.is_absolute():
+            p = Path(__file__).resolve().parent / p
+        base = p.read_text(encoding="utf-8").strip()
+    else:
+        base = job["prompt"].strip()
+    return base + FOOTER
+
+
 def main():
     raise SystemExit("not implemented yet")
 
