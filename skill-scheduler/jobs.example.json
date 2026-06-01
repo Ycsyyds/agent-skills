@@ -1,0 +1,17 @@
+{
+  "defaults": { "timeout_minutes": 20, "report_to": "" },
+  "jobs": [
+    {
+      "name": "group-digest-示例群",
+      "enabled": true,
+      "schedule": { "daily_at": "02:30" },
+      "prompt": "使用 lark-workflow-group-digest skill，对飞书群「示例群名」做增量群重点整理：从该群上次游标到现在拉新消息，识别5类重点，追加到该群纪要文档顶部，bot 私信摘要给我。该群已 bootstrap，直接增量执行。"
+    },
+    {
+      "name": "bug-feedback-示例群",
+      "enabled": false,
+      "schedule": { "daily_at": "02:45", "weekdays": [1, 2, 3, 4, 5] },
+      "prompt": "使用 lark-workflow-bug-feedback skill，对飞书群「示例群名」做增量 bug 收集：拉新消息，识别 bug/意见，查重合并写该群 Base，追加当天日报到顶部，bot 私信日报给我。该群已 bootstrap，直接增量执行。"
+    }
+  ]
+}
