@@ -17,6 +17,8 @@ SCRATCH_DIR = HOME / "scratch"
 ALERT_FILE = HOME / "ALERT.log"
 LOCK_FILE = HOME / "dispatcher.lock"
 KEEP_LOGS = 20
+DEFAULT_TIMEOUT_MINUTES = 20
+SUBPROCESS_TIMEOUT_SECONDS = 60
 
 FOOTER = (
     "\n\n[无人值守自动调度] 没人能回答你的问题。务必：1) 不要问任何确认，"
@@ -93,7 +95,10 @@ def save_json(path, data):
 
 
 def load_config():
-    cfg = load_json(JOBS_FILE, None)
+    try:
+        cfg = load_json(JOBS_FILE, None)
+    except json.JSONDecodeError as e:
+        raise SystemExit(f"jobs.json 解析失败: {e}")
     if cfg is None:
         raise SystemExit(f"找不到配置：{JOBS_FILE}（从 jobs.example.json 拷贝一份）")
     return cfg
@@ -164,7 +169,8 @@ def preflight_auth():
     """跑 lark-cli auth status，返回 (ok, user_open_id|None)。"""
     try:
         out = subprocess.run(
-            ["lark-cli", "auth", "status"], capture_output=True, text=True, timeout=60
+            ["lark-cli", "auth", "status"], capture_output=True, text=True,
+            timeout=SUBPROCESS_TIMEOUT_SECONDS
         )
         data = json.loads(out.stdout)
     except Exception:
@@ -181,7 +187,7 @@ def send_alert(recipient, text):
             r = subprocess.run(
                 ["lark-cli", "im", "+messages-send", "--user-id", recipient,
                  "--markdown", text, "--as", "bot"],
-                capture_output=True, text=True, timeout=60,
+                capture_output=True, text=True, timeout=SUBPROCESS_TIMEOUT_SECONDS,
             )
             if r.returncode == 0:
                 return True
@@ -199,6 +205,17 @@ def log_dispatcher(msg):
         f.write(f"{datetime.now().isoformat(timespec='seconds')} {msg}\n")
 
 
+def should_alert(prev, rec):
+    """仅当本次非 OK 且非'同一天已经是失败态'时返回 True。"""
+    if rec.get("last_result") == "OK":
+        return False
+    prev_failed_today = (
+        prev.get("last_result") not in (None, "OK", "DRYRUN")
+        and (prev.get("last_run_at") or "")[:10] == rec["last_run_at"][:10]
+    )
+    return not prev_failed_today
+
+
 def execute_job(job, cfg, state, dry_run=False):
     name = job["name"]
     prompt = build_prompt(job)
@@ -209,7 +226,7 @@ def execute_job(job, cfg, state, dry_run=False):
         print("--- prompt ---")
         print(prompt)
         return "DRYRUN"
-    timeout_minutes = job.get("timeout_minutes", cfg.get("defaults", {}).get("timeout_minutes", 20))
+    timeout_minutes = job.get("timeout_minutes", cfg.get("defaults", {}).get("timeout_minutes", DEFAULT_TIMEOUT_MINUTES))
     ts = datetime.now().strftime("%Y-%m-%d_%H%M%S")
     log_path = LOG_DIR / name / f"{ts}.log"
     stdout, stderr, exit_code, timed_out = run_kiro(prompt, timeout_minutes, log_path)
@@ -226,14 +243,9 @@ def execute_job(job, cfg, state, dry_run=False):
     }
     jobs_state[name] = rec
     prune_logs(name)
-    if result != "OK":
-        prev_failed_today = (
-            prev.get("last_result") not in (None, "OK", "DRYRUN")
-            and (prev.get("last_run_at") or "")[:10] == rec["last_run_at"][:10]
-        )
-        if not prev_failed_today:
-            send_alert(resolve_recipient(cfg, state),
-                       f"❌ {name} {result} | {reason} | {log_path} | {rec['last_run_at']}")
+    if should_alert(prev, rec):
+        send_alert(resolve_recipient(cfg, state),
+                   f"❌ {name} {result} | {reason} | {log_path} | {rec['last_run_at']}")
     return result
 
 
@@ -255,13 +267,21 @@ def cmd_tick():
     for job in cfg.get("jobs", []):
         if not job.get("enabled", True):
             continue
-        validate_job(job)
-        last = state.get("jobs", {}).get(job["name"], {}).get("last_run_at")
-        last_dt = datetime.fromisoformat(last) if last else None
-        if is_due(job["schedule"], last_dt, now):
-            res = execute_job(job, cfg, state, dry_run=False)
-            save_json(STATE_FILE, state)
-            ran.append(f"{job['name']}={res}")
+        try:
+            validate_job(job)
+            last = state.get("jobs", {}).get(job["name"], {}).get("last_run_at")
+            last_dt = datetime.fromisoformat(last) if last else None
+            if is_due(job["schedule"], last_dt, now):
+                res = execute_job(job, cfg, state, dry_run=False)
+                save_json(STATE_FILE, state)
+                ran.append(f"{job['name']}={res}")
+        except Exception as e:
+            job_name = job.get("name", "<unknown>")
+            log_dispatcher(f"job {job_name} 调度异常: {e}")
+            send_alert(resolve_recipient(cfg, state),
+                       f"❌ {job_name} 调度异常 | {e} | "
+                       f"{datetime.now().isoformat(timespec='seconds')}")
+            continue
     log_dispatcher("tick ran: " + (", ".join(ran) if ran else "(none due)"))
 
 
@@ -278,6 +298,7 @@ def cmd_run(name, dry_run):
     ok, open_id = preflight_auth()
     if open_id and not state.get("report_to_cached"):
         state["report_to_cached"] = open_id
+        save_json(STATE_FILE, state)
     if not ok:
         raise SystemExit("预检失败：lark-cli 认证无效，请重新登录")
     res = execute_job(job, cfg, state, dry_run=False)

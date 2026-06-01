@@ -154,5 +154,25 @@ class TestRecipient(unittest.TestCase):
         self.assertIsNone(resolve_recipient({"defaults": {}}, {}))
 
 
+from dispatcher import should_alert
+
+
+class TestShouldAlert(unittest.TestCase):
+    def test_second_failure_same_day_suppressed(self):
+        prev = {"last_result": "FAIL", "last_run_at": "2026-06-01T08:00:00"}
+        rec = {"last_result": "FAIL", "last_run_at": "2026-06-01T09:00:00"}
+        self.assertFalse(should_alert(prev, rec))
+
+    def test_failure_new_day_not_suppressed(self):
+        prev = {"last_result": "FAIL", "last_run_at": "2026-05-31T08:00:00"}
+        rec = {"last_result": "FAIL", "last_run_at": "2026-06-01T09:00:00"}
+        self.assertTrue(should_alert(prev, rec))
+
+    def test_failure_after_prev_ok_not_suppressed(self):
+        prev = {"last_result": "OK", "last_run_at": "2026-06-01T08:00:00"}
+        rec = {"last_result": "FAIL", "last_run_at": "2026-06-01T09:00:00"}
+        self.assertTrue(should_alert(prev, rec))
+
+
 if __name__ == "__main__":
     unittest.main()
