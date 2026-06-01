@@ -277,10 +277,18 @@ def cmd_tick():
                 ran.append(f"{job['name']}={res}")
         except Exception as e:
             job_name = job.get("name", "<unknown>")
+            now_iso = datetime.now().isoformat(timespec="seconds")
             log_dispatcher(f"job {job_name} 调度异常: {e}")
-            send_alert(resolve_recipient(cfg, state),
-                       f"❌ {job_name} 调度异常 | {e} | "
-                       f"{datetime.now().isoformat(timespec='seconds')}")
+            jobs_state = state.setdefault("jobs", {})
+            prev = jobs_state.get(job_name, {})
+            rec = {"last_run_at": now_iso, "last_result": "FAIL",
+                   "last_exit_code": None, "last_reason": f"调度异常: {e}",
+                   "last_credits": None, "last_log": None}
+            jobs_state[job_name] = rec
+            save_json(STATE_FILE, state)
+            if should_alert(prev, rec):
+                send_alert(resolve_recipient(cfg, state),
+                           f"❌ {job_name} 调度异常 | {e} | {now_iso}")
             continue
     log_dispatcher("tick ran: " + (", ".join(ran) if ran else "(none due)"))
 
