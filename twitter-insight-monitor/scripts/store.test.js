@@ -19,3 +19,43 @@ test('default data_home is ~/.twitter-insight, overridable', () => {
   assert.strictEqual(sub.coreInsights, path.join('/tmp/dh', 'memory', 'long-term', 'core-insights.md'));
   assert.strictEqual(sub.archiveDir, path.join('/tmp/dh', 'memory', 'archive'));
 });
+
+const fs = require('node:fs');
+const lib = require('./store-lib');
+
+function tmpCtx() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ti-'));
+  const p = paths.resolve({ home: root });
+  return { root, ctx: lib.makeCtx({ home: root }) , p};
+}
+
+test('init creates config + dirs and reports no migration when old repo absent', () => {
+  const { ctx } = tmpCtx();
+  const r = lib.init(ctx);
+  assert.ok(fs.existsSync(ctx.p.configFile));
+  assert.ok(fs.existsSync(ctx.dp.dailyDir));
+  assert.ok(fs.existsSync(ctx.dp.archiveDir));
+  assert.strictEqual(r.migrationAvailable, false);
+  assert.ok(Array.isArray(ctx.config.targets) && ctx.config.targets.length >= 1);
+  assert.strictEqual(ctx.config.notify, false);
+});
+
+test('cursors returns empty handle map + null dates on fresh state', () => {
+  const { ctx } = tmpCtx();
+  lib.init(ctx);
+  const c = lib.cursors(ctx);
+  assert.deepStrictEqual(c.handles, {});
+  assert.strictEqual(c.last_daily_date, null);
+  assert.strictEqual(c.last_weekly_date, null);
+});
+
+test('migrate copies data/reports/memory from old repo', () => {
+  const { ctx, root } = tmpCtx();
+  lib.init(ctx);
+  const old = path.join(root, 'twitter-monitor');
+  fs.mkdirSync(path.join(old, 'data'), { recursive: true });
+  fs.writeFileSync(path.join(old, 'data', 'karpathy.json'), '{"tweets":[]}');
+  const n = lib.migrate(ctx, old);
+  assert.ok(n.copied >= 1);
+  assert.ok(fs.existsSync(path.join(ctx.dp.dataDir, 'karpathy.json')));
+});
