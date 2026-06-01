@@ -91,7 +91,7 @@ node fetch.js --handle <h> --since-id <id>
 | `cursors` | 打印每个 handle 的 since-id + last_daily_date + last_weekly_date。 |
 | `add-tweets --handle <h>` | stdin 收原始推文 → 追加进 `data/{h}.json`，按 id 去重、剪掉 >7 天；**返回需要洞察的新推 id 列表**（排除 prefilter_skip）。 |
 | `save-insights --handle <h>` | stdin 收 `[{id, insight{...}}]` → 挂到对应推文；把该 handle 游标推进到已处理的最大 id。 |
-| `pending-daily` | 按 state 判断是否有就绪日期；返回当日全量推文（按人物分组 + 已附洞察）。 |
+| `pending-daily` | 按 state 判断有哪些就绪日期（有推文但尚未出日报，含今天，可能多天）；返回这些日期的推文，按日期 + 人物分组、已附洞察。 |
 | `pending-weekly` | 按 state 判断是否跨周；返回近 7 份日报 + 当前 core-insights。 |
 | `save-daily --date <d>` | stdin 收 markdown → 写 `reports/daily/<d>.md`，置 last_daily_date。 |
 | `save-weekly --week <w>` | stdin 收 markdown → 写周度快照 + **重写** `core-insights.md`（旧版归档到 `archive/`），置 last_weekly_date。 |
@@ -130,7 +130,7 @@ echo "<摘要 markdown>" | node notify.js     # 仅当 config.notify 开启时�
 
 ### 能力 2 · 日报聚合
 
-- 输入：`pending-daily` 返回的当日全量推文（按人物分组 + 已附洞察）。
+- 输入：`pending-daily` 返回的就绪日期推文（按日期 + 人物分组 + 已附洞察）。
 - 输出：五段式中文 Markdown — 🎯 今日核心信号 / 📈 主题热度 / ⚖️ 立场分歧·共识 / 👁 持续追踪信号 / 👥 各人物动态；800–1500 字 → `save-daily`。
 
 ### 能力 3 · 周度蒸馏
@@ -187,8 +187,10 @@ echo "<摘要 markdown>" | node notify.js     # 仅当 config.notify 开启时�
 ```yaml
 name: twitter-insight-monitor
 version: 0.1.0
-description: "..."  # 触发词：跑一下twitter监控 / 看看最近AI大佬说了啥 / 出个日报 /
-                    # 周度蒸馏更新长期记忆 / 盯着这些人帮我提炼洞察 ...
+# description 在实现阶段撰写，须覆盖以下触发词与用途：
+# 跑一下twitter监控 / 看看最近AI大佬说了啥 / 出个日报 /
+# 周度蒸馏更新长期记忆 / 盯着这些人帮我提炼洞察 ...
+description: "<实现时填写：监控 AI 大佬 Twitter/X、用内置模型逐条提炼洞察、维护三层记忆与日报/周报；含上述触发词>"
 metadata:
   requires:
     bins: ["node"]  # lark-cli 仅 notify 开启时需要
