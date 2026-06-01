@@ -81,3 +81,24 @@ test('saveInsights attaches insight and advances handle cursor to max id', () =>
   assert.strictEqual(stored.tweets[0].llm_insight.novelty, 7);
   assert.strictEqual(lib.cursors(ctx).handles.karpathy.last_id, '100');
 });
+
+test('pendingDaily returns today as a ready date with grouped tweets', () => {
+  const { ctx } = tmpCtx(); lib.init(ctx);
+  const today = new Date().toLocaleDateString('en-CA');
+  lib.addTweets(ctx, 'karpathy', [{ id: '200', text: 'a tweet long enough to matter', url: 'https://x.com/k/status/200', time: new Date().toISOString() }]);
+  const r = lib.pendingDaily(ctx);
+  const day = r.dates.find(d => d.date === today);
+  assert.ok(day, 'today should be ready');
+  assert.strictEqual(day.groups[0].target.handle, 'karpathy');
+  assert.strictEqual(day.groups[0].tweets.length, 1);
+});
+
+test('saveDaily writes report file and advances last_daily_date only for past dates', () => {
+  const { ctx } = tmpCtx(); lib.init(ctx);
+  lib.saveDaily(ctx, '2026-05-30', '# report');
+  assert.ok(fs.existsSync(path.join(ctx.dp.dailyDir, '2026-05-30.md')));
+  assert.strictEqual(lib.cursors(ctx).last_daily_date, '2026-05-30');
+  const today = new Date().toLocaleDateString('en-CA');
+  lib.saveDaily(ctx, today, '# today');
+  assert.strictEqual(lib.cursors(ctx).last_daily_date, '2026-05-30');
+});

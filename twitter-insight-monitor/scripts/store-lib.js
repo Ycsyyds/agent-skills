@@ -132,6 +132,39 @@ function saveInsights(ctx, handle, items) {
   return { advanced: s.handles[handle].last_id };
 }
 
+const dayOf = (time) => new Date(time).toLocaleDateString('en-CA'); // YYYY-MM-DD local
+
+function pendingDaily(ctx) {
+  const today = new Date().toLocaleDateString('en-CA');
+  const s = loadState(ctx);
+  const byDate = {}; // date -> handle -> {target, tweets}
+  for (const target of ctx.config.targets) {
+    const store = readJSON(dataFile(ctx, target.handle), { tweets: [] });
+    for (const t of store.tweets) {
+      if (!t.time) continue;
+      const d = dayOf(t.time);
+      const ready = d === today || !fs.existsSync(path.join(ctx.dp.dailyDir, `${d}.md`));
+      if (!ready) continue;
+      if (s.last_daily_date && d < s.last_daily_date) continue;
+      ((byDate[d] ||= {})[target.handle] ||= { target, tweets: [] }).tweets.push(t);
+    }
+  }
+  const dates = Object.keys(byDate).sort().map(date => ({ date, groups: Object.values(byDate[date]) }));
+  return { today, dates };
+}
+
+function saveDaily(ctx, date, markdown) {
+  fs.mkdirSync(ctx.dp.dailyDir, { recursive: true });
+  fs.writeFileSync(path.join(ctx.dp.dailyDir, `${date}.md`), markdown);
+  const today = new Date().toLocaleDateString('en-CA');
+  if (date < today) {
+    const s = loadState(ctx);
+    if (!s.last_daily_date || date > s.last_daily_date) { s.last_daily_date = date; saveState(ctx, s); }
+  }
+  return { written: `${date}.md` };
+}
+
 module.exports = { makeCtx, init, cursors, migrate, loadState, saveState, readJSON, writeJSON,
   tweetId, dataFile, addTweets, saveInsights,
+  pendingDaily, saveDaily,
   _internal: { defaultConfig, DEFAULT_TARGETS } };
