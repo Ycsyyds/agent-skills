@@ -122,3 +122,15 @@ test('saveWeekly writes snapshot, archives old core, rewrites core, sets cursor'
   assert.ok(fs.readdirSync(ctx.dp.archiveDir).some(f => f.startsWith('core-insights-')));
   assert.strictEqual(lib.cursors(ctx).last_weekly_date, '2026-W22');
 });
+
+const { execFileSync } = require('node:child_process');
+
+test('store.js CLI: init then cursors via subprocess', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ti-cli-'));
+  const env = { ...process.env, HOME: root, XDG_CONFIG_HOME: path.join(root, '.config') };
+  const cli = path.join(__dirname, 'store.js');
+  execFileSync('node', [cli, 'init'], { env });
+  const out = execFileSync('node', [cli, 'cursors'], { env }).toString();
+  const c = JSON.parse(out);
+  assert.deepStrictEqual(c.handles, {});
+});
