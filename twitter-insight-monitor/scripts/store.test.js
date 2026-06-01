@@ -105,8 +105,8 @@ test('saveDaily writes report file and advances last_daily_date only for past da
 
 test('pendingWeekly is ready when daily reports exist and week not yet distilled', () => {
   const { ctx } = tmpCtx(); lib.init(ctx);
-  const today = new Date().toLocaleDateString('en-CA');
-  lib.saveDaily(ctx, today, '# today report');
+  const past = new Date(Date.now() - 9 * 86400000).toLocaleDateString('en-CA');
+  lib.saveDaily(ctx, past, '# past report');
   const r = lib.pendingWeekly(ctx);
   assert.strictEqual(r.ready, true);
   assert.match(r.week, /^\d{4}-W\d{2}$/);
@@ -171,9 +171,33 @@ test('end-to-end: init → add-tweets → save-insights → daily → weekly', (
   lib.saveDaily(ctx, today, '# daily\n核心信号');
   assert.ok(fs.existsSync(path.join(ctx.dp.dailyDir, `${today}.md`)));
 
+  const past = new Date(Date.now() - 9 * 86400000).toLocaleDateString('en-CA');
+  lib.saveDaily(ctx, past, '# past daily');
   const pw = lib.pendingWeekly(ctx);
   assert.strictEqual(pw.ready, true);
   lib.saveWeekly(ctx, pw.week, '# core insights v1');
   assert.strictEqual(fs.readFileSync(ctx.dp.coreInsights, 'utf8'), '# core insights v1');
   assert.strictEqual(lib.cursors(ctx).last_weekly_date, pw.week);
+});
+
+test('isoWeek computes the ISO week label', () => {
+  assert.strictEqual(lib.isoWeek(new Date('2026-05-25')), '2026-W22');
+});
+
+test('addTweets prunes uninsighted >7d but keeps insighted <14d', () => {
+  const { ctx } = tmpCtx(); lib.init(ctx);
+  const t10 = new Date(Date.now() - 10 * 86400000).toISOString();
+  lib.addTweets(ctx, 'karpathy', [
+    { id: '401', text: 'kept because insighted', url: 'https://x.com/k/status/401', time: t10, llm_insight: { novelty: 5 } },
+    { id: '402', text: 'pruned because old and uninsighted', url: 'https://x.com/k/status/402', time: t10 },
+  ]);
+  const stored = lib.readJSON(path.join(ctx.dp.dataDir, 'karpathy.json'), null);
+  const ids = stored.tweets.map(t => t.id);
+  assert.ok(ids.includes('401'));
+  assert.ok(!ids.includes('402'));
+});
+
+test('buildLarkArgs returns a shell-free argv array', () => {
+  assert.deepStrictEqual(notify.buildLarkArgs('cid', 'bot', 'hi'),
+    ['im', '+messages-send', '--chat-id', 'cid', '--as', 'bot', '--markdown', 'hi']);
 });

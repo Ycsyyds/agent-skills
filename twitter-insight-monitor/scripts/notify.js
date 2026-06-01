@@ -1,13 +1,16 @@
 #!/usr/bin/env node
-const { execSync } = require('node:child_process');
+const { execFileSync } = require('node:child_process');
 const https = require('node:https');
 const http = require('node:http');
 const fs = require('node:fs');
 const lib = require('./store-lib');
 
+function buildLarkArgs(chatId, identity, text) {
+  return ['im', '+messages-send', '--chat-id', String(chatId), '--as', String(identity), '--markdown', text];
+}
+
 function sendViaLarkCli(chatId, text, identity) {
-  const escaped = text.replace(/'/g, "'\\''");
-  execSync(`lark-cli im +messages-send --chat-id ${chatId} --as ${identity} --markdown $'${escaped.replace(/\n/g, '\\n')}'`, { timeout: 30000, stdio: 'pipe' });
+  execFileSync('lark-cli', buildLarkArgs(chatId, identity, text), { timeout: 30000, stdio: 'pipe' });
 }
 
 function sendViaWebhook(webhookUrl, title, text) {
@@ -33,7 +36,7 @@ async function send(text, title = 'Twitter AI 监控', ctx = lib.makeCtx()) {
   return false;
 }
 
-module.exports = { send };
+module.exports = { send, buildLarkArgs };
 
 if (require.main === module) {
   const text = fs.readFileSync(0, 'utf8');

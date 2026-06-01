@@ -8,6 +8,10 @@ function flags(argv) {
   return f;
 }
 function stdin() { try { return fs.readFileSync(0, 'utf8'); } catch { return ''; } }
+function parseStdin() {
+  try { return JSON.parse(stdin()); }
+  catch { process.stderr.write('invalid JSON on stdin\n'); process.exit(1); }
+}
 function out(o) { process.stdout.write(JSON.stringify(o, null, 2) + '\n'); }
 
 const cmd = process.argv[2];
@@ -19,8 +23,8 @@ switch (cmd) {
   case 'migrate': out(lib.migrate(ctx, f.from)); break;
   case 'config': out(ctx.config); break;
   case 'cursors': out(lib.cursors(ctx)); break;
-  case 'add-tweets': out(lib.addTweets(ctx, f.handle, JSON.parse(stdin()))); break;
-  case 'save-insights': out(lib.saveInsights(ctx, f.handle, JSON.parse(stdin()))); break;
+  case 'add-tweets': out(lib.addTweets(ctx, f.handle, parseStdin())); break;
+  case 'save-insights': out(lib.saveInsights(ctx, f.handle, parseStdin())); break;
   case 'pending-daily': out(lib.pendingDaily(ctx)); break;
   case 'pending-weekly': out(lib.pendingWeekly(ctx)); break;
   case 'save-daily': out(lib.saveDaily(ctx, f.date, stdin())); break;

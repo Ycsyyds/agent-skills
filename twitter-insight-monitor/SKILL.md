@@ -63,12 +63,13 @@ node $SCRIPTS/store.js save-daily --date <YYYY-MM-DD> < /tmp/daily.md
 
 ### Step 5 · 周度蒸馏（按需/跨周）
 ```bash
-node $SCRIPTS/store.js pending-weekly     # {ready,week,dailyReports,prevLongTerm}
+node $SCRIPTS/store.js pending-weekly     # {ready,week,dailyReports,prevLongTerm,pendingWeeks}
 ```
-若 `ready`，按 prompt 第 3 节重写 core-insights：
+只蒸馏**已完成的周**（排除当前进行中的周），每次返回最早一个待补的周。若 `ready`，按 prompt 第 3 节重写 core-insights：
 ```bash
 node $SCRIPTS/store.js save-weekly --week <YYYY-Www> < /tmp/core.md
 ```
+**重复 Step 5**：每次 `save-weekly` 后再跑一次 `pending-weekly`，只要仍返回 `ready:true` 就继续蒸馏下一周，直到 `ready:false`（补齐多个漏掉的周）。
 
 ### Step 6 · 可选通知 + 对话内呈现
 若 `config.notify=true`，拼摘要（高 novelty 推文 / 日报核心信号 / 周报新观点）推飞书：

@@ -83,6 +83,11 @@ function tweetId(t) {
   return m ? m[1] : null;
 }
 
+function cmpId(a, b) {
+  try { const x = BigInt(a), y = BigInt(b); return x < y ? -1 : x > y ? 1 : 0; }
+  catch { return a < b ? -1 : a > b ? 1 : 0; }
+}
+
 function dataFile(ctx, handle) { return path.join(ctx.dp.dataDir, `${handle}.json`); }
 
 function pruneTweets(ctx, tweets) {
@@ -107,7 +112,7 @@ function addTweets(ctx, handle, incoming) {
     const cur = byId.get(id);
     if (!cur.llm_insight && !cur.prefilter_skip && !pending.includes(id)) pending.push(id);
   }
-  store.tweets = pruneTweets(ctx, [...byId.values()].sort((a, b) => (tweetId(b) > tweetId(a) ? 1 : -1)));
+  store.tweets = pruneTweets(ctx, [...byId.values()].sort((a, b) => cmpId(tweetId(b), tweetId(a))));
   store.lastChecked = new Date().toISOString();
   writeJSON(file, store);
   return { pending };
@@ -121,12 +126,12 @@ function saveInsights(ctx, handle, items) {
   for (const it of items) {
     const t = byId.get(String(it.id)); if (!t) continue;
     t.llm_insight = it.insight;
-    if (maxId === null || String(it.id) > maxId) maxId = String(it.id);
+    if (maxId === null || cmpId(String(it.id), maxId) > 0) maxId = String(it.id);
   }
   writeJSON(file, store);
   const s = loadState(ctx);
   const prev = s.handles[handle] || {};
-  s.handles[handle] = { last_id: maxId && (!prev.last_id || maxId > prev.last_id) ? maxId : (prev.last_id || maxId),
+  s.handles[handle] = { last_id: maxId && (!prev.last_id || cmpId(maxId, prev.last_id) > 0) ? maxId : (prev.last_id || maxId),
     last_processed_time: new Date().toISOString() };
   saveState(ctx, s);
   return { advanced: s.handles[handle].last_id };
@@ -138,7 +143,7 @@ function pendingDaily(ctx) {
   const today = new Date().toLocaleDateString('en-CA');
   const s = loadState(ctx);
   const byDate = {}; // date -> handle -> {target, tweets}
-  for (const target of ctx.config.targets) {
+  for (const target of (ctx.config.targets || [])) {
     const store = readJSON(dataFile(ctx, target.handle), { tweets: [] });
     for (const t of store.tweets) {
       if (!t.time) continue;
@@ -174,19 +179,25 @@ function isoWeek(d) {
 }
 
 function pendingWeekly(ctx) {
-  const week = isoWeek(new Date());
   const s = loadState(ctx);
-  const cut = Date.now() - 7 * 86400000;
-  const dailyReports = [];
+  const curWeek = isoWeek(new Date());
+  const prevLongTerm = fs.existsSync(ctx.dp.coreInsights) ? fs.readFileSync(ctx.dp.coreInsights, 'utf8') : '';
+  const byWeek = {}; // week -> [{date, content}]
   if (fs.existsSync(ctx.dp.dailyDir)) {
-    for (const f of fs.readdirSync(ctx.dp.dailyDir).filter(f => f.endsWith('.md')).sort()) {
+    for (const f of fs.readdirSync(ctx.dp.dailyDir).filter(f => f.endsWith('.md'))) {
       const date = f.replace(/\.md$/, '');
-      if (new Date(date).getTime() >= cut) dailyReports.push({ date, content: fs.readFileSync(path.join(ctx.dp.dailyDir, f), 'utf8') });
+      const wk = isoWeek(new Date(date));
+      if (wk === curWeek) continue; // exclude current in-progress week
+      (byWeek[wk] ||= []).push({ date, content: fs.readFileSync(path.join(ctx.dp.dailyDir, f), 'utf8') });
     }
   }
-  const prevLongTerm = fs.existsSync(ctx.dp.coreInsights) ? fs.readFileSync(ctx.dp.coreInsights, 'utf8') : '';
-  const ready = dailyReports.length > 0 && s.last_weekly_date !== week;
-  return { ready, week, dailyReports, prevLongTerm };
+  const pendingWeeks = Object.keys(byWeek)
+    .filter(w => !s.last_weekly_date || w > s.last_weekly_date)
+    .sort();
+  if (pendingWeeks.length === 0) return { ready: false, week: null, dailyReports: [], prevLongTerm, pendingWeeks: [] };
+  const week = pendingWeeks[0];
+  const dailyReports = byWeek[week].sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+  return { ready: true, week, dailyReports, prevLongTerm, pendingWeeks };
 }
 
 function saveWeekly(ctx, week, markdown) {
