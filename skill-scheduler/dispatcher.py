@@ -29,6 +29,20 @@ SENTINEL_RE = re.compile(r"^KIRO_JOB_RESULT:\s*(OK|FAIL)\b[ \t]*(.*)$")
 CREDITS_RE = re.compile(r"Credits:\s*([0-9.]+)")
 
 
+def strip_ansi(text):
+    return ANSI_RE.sub("", text)
+
+
+def parse_sentinel(stdout):
+    """剥 ANSI 后取最后一个匹配行；返回 (result, reason)，result ∈ {'OK','FAIL',None}。"""
+    result, reason = None, ""
+    for line in strip_ansi(stdout).splitlines():
+        m = SENTINEL_RE.match(line.strip())
+        if m:
+            result, reason = m.group(1), m.group(2).strip()
+    return result, reason
+
+
 def main():
     raise SystemExit("not implemented yet")
 
