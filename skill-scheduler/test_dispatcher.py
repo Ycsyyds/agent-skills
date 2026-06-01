@@ -155,6 +155,7 @@ class TestRecipient(unittest.TestCase):
 
 
 from dispatcher import should_alert
+from dispatcher import auth_usable
 
 
 class TestShouldAlert(unittest.TestCase):
@@ -172,6 +173,26 @@ class TestShouldAlert(unittest.TestCase):
         prev = {"last_result": "OK", "last_run_at": "2026-06-01T08:00:00"}
         rec = {"last_result": "FAIL", "last_run_at": "2026-06-01T09:00:00"}
         self.assertTrue(should_alert(prev, rec))
+
+
+class TestAuthUsable(unittest.TestCase):
+    def _data(self, available, status):
+        return {"identities": {"user": {"available": available, "tokenStatus": status, "openId": "ou_x"}}}
+
+    def test_valid_ok(self):
+        self.assertEqual(auth_usable(self._data(True, "valid")), (True, "ou_x"))
+
+    def test_needs_refresh_ok(self):
+        self.assertEqual(auth_usable(self._data(True, "needs_refresh")), (True, "ou_x"))
+
+    def test_other_status_fails(self):
+        self.assertEqual(auth_usable(self._data(True, "expired")), (False, "ou_x"))
+
+    def test_unavailable_fails(self):
+        self.assertEqual(auth_usable(self._data(False, "valid"))[0], False)
+
+    def test_missing_user_fails(self):
+        self.assertEqual(auth_usable({}), (False, None))
 
 
 if __name__ == "__main__":

@@ -165,6 +165,18 @@ def resolve_recipient(cfg, state):
     return cfg.get("defaults", {}).get("report_to") or state.get("report_to_cached") or None
 
 
+# needs_refresh 视为可用：access token 过期但 lark-cli 会用 refresh token 自动续期。
+# 只有 user 不可用或 token 状态不在此集合（如需重新登录）才判失败。
+USABLE_TOKEN_STATUSES = {"valid", "needs_refresh"}
+
+
+def auth_usable(status_data):
+    """从 lark-cli auth status 的 JSON 判断 user 身份是否可用，返回 (ok, user_open_id|None)。"""
+    user = status_data.get("identities", {}).get("user", {})
+    ok = bool(user.get("available")) and user.get("tokenStatus") in USABLE_TOKEN_STATUSES
+    return ok, user.get("openId")
+
+
 def preflight_auth():
     """跑 lark-cli auth status，返回 (ok, user_open_id|None)。"""
     try:
@@ -175,9 +187,7 @@ def preflight_auth():
         data = json.loads(out.stdout)
     except Exception:
         return False, None
-    user = data.get("identities", {}).get("user", {})
-    ok = bool(user.get("available")) and user.get("tokenStatus") == "valid"
-    return ok, user.get("openId")
+    return auth_usable(data)
 
 
 def send_alert(recipient, text):
