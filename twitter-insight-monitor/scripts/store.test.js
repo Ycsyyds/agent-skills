@@ -157,3 +157,23 @@ test('notify.send returns false when notify disabled (no send attempted)', async
   const ok = await notify.send('hello', 'title', ctx);
   assert.strictEqual(ok, false);
 });
+
+test('end-to-end: init → add-tweets → save-insights → daily → weekly', () => {
+  const { ctx } = tmpCtx(); lib.init(ctx);
+  const now = new Date().toISOString();
+  const r1 = lib.addTweets(ctx, 'karpathy', [{ id: '300', text: 'a substantive tweet about model scaling laws', url: 'https://x.com/k/status/300', time: now }]);
+  assert.deepStrictEqual(r1.pending, ['300']);
+  lib.saveInsights(ctx, 'karpathy', [{ id: '300', insight: { one_liner: 'scaling', novelty: 8, skip: false } }]);
+
+  const pd = lib.pendingDaily(ctx);
+  const today = new Date().toLocaleDateString('en-CA');
+  assert.ok(pd.dates.some(d => d.date === today));
+  lib.saveDaily(ctx, today, '# daily\n核心信号');
+  assert.ok(fs.existsSync(path.join(ctx.dp.dailyDir, `${today}.md`)));
+
+  const pw = lib.pendingWeekly(ctx);
+  assert.strictEqual(pw.ready, true);
+  lib.saveWeekly(ctx, pw.week, '# core insights v1');
+  assert.strictEqual(fs.readFileSync(ctx.dp.coreInsights, 'utf8'), '# core insights v1');
+  assert.strictEqual(lib.cursors(ctx).last_weekly_date, pw.week);
+});
