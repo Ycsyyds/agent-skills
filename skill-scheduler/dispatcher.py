@@ -156,6 +156,43 @@ def prune_logs(job_name):
         old.unlink()
 
 
+def resolve_recipient(cfg, state):
+    return cfg.get("defaults", {}).get("report_to") or state.get("report_to_cached") or None
+
+
+def preflight_auth():
+    """跑 lark-cli auth status，返回 (ok, user_open_id|None)。"""
+    try:
+        out = subprocess.run(
+            ["lark-cli", "auth", "status"], capture_output=True, text=True, timeout=60
+        )
+        data = json.loads(out.stdout)
+    except Exception:
+        return False, None
+    user = data.get("identities", {}).get("user", {})
+    ok = bool(user.get("available")) and user.get("tokenStatus") == "valid"
+    return ok, user.get("openId")
+
+
+def send_alert(recipient, text):
+    """优先 bot 私信；失败/无接收人则写 ALERT.log。返回是否经飞书送达。"""
+    if recipient:
+        try:
+            r = subprocess.run(
+                ["lark-cli", "im", "+messages-send", "--user-id", recipient,
+                 "--markdown", text, "--as", "bot"],
+                capture_output=True, text=True, timeout=60,
+            )
+            if r.returncode == 0:
+                return True
+        except Exception:
+            pass
+    ALERT_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with open(ALERT_FILE, "a", encoding="utf-8") as f:
+        f.write(f"{datetime.now().isoformat(timespec='seconds')} {text}\n")
+    return False
+
+
 def main():
     raise SystemExit("not implemented yet")
 

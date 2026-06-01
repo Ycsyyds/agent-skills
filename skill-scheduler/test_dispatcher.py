@@ -139,5 +139,20 @@ class TestJudge(unittest.TestCase):
         self.assertEqual(judge("no sentinel but exit 0", 0, False)[0], "FAIL")
 
 
+from dispatcher import resolve_recipient
+
+
+class TestRecipient(unittest.TestCase):
+    def test_explicit_wins(self):
+        cfg = {"defaults": {"report_to": "ou_explicit"}}
+        self.assertEqual(resolve_recipient(cfg, {"report_to_cached": "ou_cached"}), "ou_explicit")
+
+    def test_cached_fallback(self):
+        self.assertEqual(resolve_recipient({"defaults": {}}, {"report_to_cached": "ou_cached"}), "ou_cached")
+
+    def test_none(self):
+        self.assertIsNone(resolve_recipient({"defaults": {}}, {}))
+
+
 if __name__ == "__main__":
     unittest.main()
