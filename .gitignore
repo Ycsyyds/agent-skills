@@ -4,6 +4,9 @@ content-creator-skill/
 hermes-agent-research.md
 output/
 
+# 本地开发的规划 / 设计草稿，不进远端
+docs/superpowers/
+
 # 运行时 / 本地产物
 **/.work/
 *.zip
