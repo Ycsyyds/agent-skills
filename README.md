@@ -13,6 +13,7 @@
 | [lark-workflow-bug-feedback](lark-workflow-bug-feedback/) | 从指定飞书群收集 bug/产品反馈，去重维护到多维表格 + 累积日报，私信汇总 |
 | [lark-workflow-group-digest](lark-workflow-group-digest/) | 从指定飞书群提取 5 类重点（决策/待办/通知/关键信息/资源），按天追加到累积「群重点纪要」文档，私信摘要 |
 | [twitter-insight-monitor](twitter-insight-monitor/) | 监控 AI 大佬的 Twitter/X 动态，逐条提炼结构化洞察、生成每日日报、每周蒸馏长期记忆，维护三层记忆（短期推文/中期日报/长期核心观点库） |
+| [patent-portfolio-mining](patent-portfolio-mining/) | 从项目材料系统挖掘专利点、决策合并/拆分、查新、撰写脱敏交底书、配图（mermaid/draw.io）与提交前复核的完整工作流 |
 
 ### 调度 / 自动化工具
 
